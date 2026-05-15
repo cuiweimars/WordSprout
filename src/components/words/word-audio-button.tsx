@@ -15,7 +15,10 @@ export function WordAudioButton({ wordSlug, className }: WordAudioButtonProps) {
 
   return (
     <button
-      onClick={() => play(wordSlug)}
+      onClick={(e) => {
+        e.stopPropagation();
+        play(wordSlug);
+      }}
       className={cn(
         "inline-flex items-center justify-center rounded-full transition-all",
         isPlaying

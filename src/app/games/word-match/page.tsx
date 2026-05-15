@@ -6,6 +6,8 @@ import { dolchGrades } from "@/data/dolch-words";
 import { RotateCcw, Trophy, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 interface Card {
   id: string;
@@ -34,6 +36,8 @@ function createCards(words: string[]): Card[] {
 type GameState = "setup" | "playing" | "complete";
 
 export default function WordMatchPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect, playFlip } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [cards, setCards] = useState<Card[]>([]);
@@ -71,6 +75,8 @@ export default function WordMatchPage() {
         prev.map((c) => (c.id === id ? { ...c, isFlipped: true } : c))
       );
       setFlippedIds(newFlipped);
+      playFlip();
+      speak(card.word);
 
       if (newFlipped.length === 2) {
         setIsChecking(true);
@@ -80,6 +86,7 @@ export default function WordMatchPage() {
         const second = cards.find((c) => c.id === secondId)!;
 
         if (first.word === second.word) {
+          playCorrect();
           setCards((prev) =>
             prev.map((c) =>
               c.id === firstId || c.id === secondId
@@ -93,6 +100,17 @@ export default function WordMatchPage() {
           setIsChecking(false);
           if (newMatchCount === totalPairs) {
             setGameState("complete");
+            const practicedWords = cards
+              .filter((c) => c.isMatched || c.id === firstId || c.id === secondId)
+              .map((c) => c.word);
+            const uniqueWords = [...new Set(practicedWords)];
+            submitGameResult({
+              gameType: "word_match",
+              score: uniqueWords.length,
+              maxScore: totalPairs,
+              wordsPracticed: uniqueWords,
+              wordResults: uniqueWords.map((w) => ({ word: w, correct: true })),
+            });
           }
         } else {
           setTimeout(() => {
@@ -189,7 +207,7 @@ export default function WordMatchPage() {
                   exit={{ scale: 0.8, opacity: 0 }}
                   onClick={() => handleCardClick(card.id)}
                   className={cn(
-                    "aspect-square rounded-xl text-lg font-display font-bold transition-all duration-300",
+                    "aspect-square rounded-xl text-[38px] font-display font-bold transition-all duration-300",
                     card.isMatched
                       ? "bg-sprout-100 border-2 border-sprout-300 text-sprout-700 scale-95"
                       : card.isFlipped

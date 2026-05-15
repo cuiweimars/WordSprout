@@ -1,37 +1,41 @@
 import { StyleSheet } from "@react-pdf/renderer";
 import { colors, PAGE } from "./pdf-theme";
 
-const cellGap = 12;
+const margin = 24;
+const gap = 12;
 const cols = 2;
 const rows = 2;
-const outerMargin = 24;
-const cellW = (PAGE.width - outerMargin * 2 - cellGap * (cols - 1)) / cols;
-const cellH = (PAGE.height - outerMargin * 2 - cellGap * (rows - 1)) / rows;
+const usableW = PAGE.width - margin * 2;
+const usableH = PAGE.height - margin * 2;
+const headerH = 20;
+const gridH = usableH - headerH - 8;
+const cellW = (usableW - gap * (cols - 1)) / cols;
+const cellH = (gridH - gap * (rows - 1)) / rows;
 
 export const flashcardStyles = StyleSheet.create({
-  pageFront: {
-    padding: outerMargin,
+  page: {
+    padding: margin,
     backgroundColor: colors.sprout[50],
   },
-  pageBack: {
-    padding: outerMargin,
-    backgroundColor: colors.cream,
-  },
   header: {
+    height: headerH,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
   },
   headerText: {
     fontSize: 10,
     color: colors.gray[500],
     fontFamily: "Helvetica",
   },
-  grid: {
+  row: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: cellGap,
+    justifyContent: "space-between",
+    marginBottom: gap,
+  },
+  rowLast: {
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   cardFront: {
     width: cellW,

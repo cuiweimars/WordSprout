@@ -54,7 +54,7 @@ export function Flashcard({
 
   return (
     <div
-      className={cn("relative cursor-pointer select-none", className)}
+      className={cn("relative cursor-pointer select-none h-full", className)}
       style={{ perspective: 1000 }}
       onClick={onFlip}
     >

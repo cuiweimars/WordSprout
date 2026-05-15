@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/db";
 
 export async function POST(req: Request) {
   try {
@@ -22,11 +20,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const [existing] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const { data: existing } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
 
     if (existing) {
       return NextResponse.json(
@@ -35,13 +35,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const { error: insertError } = await supabase
+      .from("users")
+      .insert({ name, email, password_hash: passwordHash });
 
-    await db.insert(users).values({
-      name,
-      email,
-      passwordHash,
-    });
+    if (insertError) {
+      console.error("Registration insert error:", insertError);
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again." },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {

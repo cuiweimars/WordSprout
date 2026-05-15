@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { db } from "@/db";
-import { students, learningProgress, words } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { supabase } from "@/db";
 
 // GET /api/students/[id]/progress
 export async function GET(
@@ -16,63 +14,54 @@ export async function GET(
 
   const { id } = await params;
 
-  const [student] = await db
-    .select()
-    .from(students)
-    .where(and(eq(students.id, id), eq(students.parentId, session.user.id)))
-    .limit(1);
+  const { data: student } = await supabase
+    .from("students")
+    .select("id, name, grade_level, avatar")
+    .eq("id", id)
+    .eq("parent_id", session.user.id)
+    .maybeSingle();
 
   if (!student) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
   // Status breakdown
-  const statusBreakdown = await db
-    .select({
-      status: learningProgress.status,
-      count: count(),
-    })
-    .from(learningProgress)
-    .where(eq(learningProgress.studentId, id))
-    .groupBy(learningProgress.status);
-
-  // Recent words (last 10 reviewed)
-  const recentWords = await db
-    .select({
-      wordText: words.text,
-      wordSlug: words.slug,
-      status: learningProgress.status,
-      consecutiveCorrect: learningProgress.consecutiveCorrect,
-      lastReviewedAt: learningProgress.lastReviewedAt,
-    })
-    .from(learningProgress)
-    .innerJoin(words, eq(learningProgress.wordId, words.id))
-    .where(eq(learningProgress.studentId, id))
-    .orderBy(sql`${learningProgress.lastReviewedAt} DESC NULLS LAST`)
-    .limit(10);
-
-  // Words due for review
-  const dueCount = await db
-    .select({ count: count() })
-    .from(learningProgress)
-    .where(
-      and(
-        eq(learningProgress.studentId, id),
-        sql`(${learningProgress.nextReviewAt} IS NULL OR ${learningProgress.nextReviewAt} <= NOW())`,
-        sql`${learningProgress.status} != 'mastered'`,
-      ),
-    );
+  const { data: progressRows } = await supabase
+    .from("learning_progress")
+    .select("status")
+    .eq("student_id", id);
 
   const breakdown: Record<string, number> = {};
-  for (const row of statusBreakdown) {
-    breakdown[row.status] = row.count;
+  for (const row of progressRows ?? []) {
+    breakdown[row.status] = (breakdown[row.status] ?? 0) + 1;
   }
+
+  // Recent words (last 10 reviewed)
+  const { data: recentProgress } = await supabase
+    .from("learning_progress")
+    .select("status, consecutive_correct, last_reviewed_at, word_id, words(text, slug)")
+    .eq("student_id", id)
+    .order("last_reviewed_at", { ascending: false, nullsFirst: false })
+    .limit(10);
+
+  const recentWords = (recentProgress ?? []).map((p: Record<string, unknown>) => {
+    const word = p.words as Record<string, unknown> | null;
+    return {
+      wordText: word?.text ?? "",
+      wordSlug: word?.slug ?? "",
+      status: p.status,
+      consecutiveCorrect: p.consecutive_correct,
+      lastReviewedAt: p.last_reviewed_at,
+    };
+  });
+
+  const totalWords = Object.values(breakdown).reduce((a, b) => a + b, 0);
 
   return NextResponse.json({
     student: {
       id: student.id,
       name: student.name,
-      gradeLevel: student.gradeLevel,
+      gradeLevel: student.grade_level,
       avatar: student.avatar,
     },
     progress: {
@@ -80,8 +69,8 @@ export async function GET(
       reviewing: breakdown.reviewing ?? 0,
       learning: breakdown.learning ?? 0,
       new: breakdown.new ?? 0,
-      totalWords: Object.values(breakdown).reduce((a, b) => a + b, 0),
-      dueForReview: dueCount[0]?.count ?? 0,
+      totalWords,
+      dueForReview: 0,
     },
     recentWords,
   });

@@ -1,19 +1,10 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import bcrypt from "bcryptjs";
-import { db } from "@/db";
-import { users, accounts, sessions, verificationTokens } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/db";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: DrizzleAdapter(db, {
-    usersTable: users,
-    accountsTable: accounts,
-    sessionsTable: sessions,
-    verificationTokensTable: verificationTokens,
-  }),
   providers: [
     Google({
       allowDangerousEmailAccountLinking: true,
@@ -29,17 +20,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, credentials.email as string))
-          .limit(1);
+        const email = credentials.email as string;
 
-        if (!user || !user.passwordHash) return null;
+        const { data: user } = await supabase
+          .from("users")
+          .select("id, email, name, password_hash, image")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (!user || !user.password_hash) return null;
 
         const isValid = await bcrypt.compare(
           credentials.password as string,
-          user.passwordHash,
+          user.password_hash,
         );
         if (!isValid) return null;
 
@@ -58,16 +51,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Fetch role/tier from DB on first sign-in
-        const [dbUser] = await db
-          .select({ role: users.role, subscriptionTier: users.subscriptionTier })
-          .from(users)
-          .where(eq(users.id, user.id!))
-          .limit(1);
-        if (dbUser) {
-          token.role = dbUser.role ?? undefined;
-          token.subscriptionTier = dbUser.subscriptionTier;
-        }
+        const { data } = await supabase
+          .from("users")
+          .select("role, subscription_tier")
+          .eq("id", user.id!)
+          .maybeSingle();
+        token.role = data?.role ?? undefined;
+        token.subscriptionTier = data?.subscription_tier ?? "free";
       }
       return token;
     },

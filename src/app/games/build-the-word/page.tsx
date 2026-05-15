@@ -6,6 +6,8 @@ import { dolchGrades } from "@/data/dolch-words";
 import { RotateCcw, Trophy, ArrowLeft, Check } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -19,6 +21,8 @@ function shuffle<T>(array: T[]): T[] {
 type GameState = "setup" | "playing" | "complete";
 
 export default function BuildTheWordPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect, playIncorrect } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [wordQueue, setWordQueue] = useState<string[]>([]);
@@ -29,8 +33,61 @@ export default function BuildTheWordPage() {
   const [score, setScore] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
 
   const totalRounds = 8;
+
+  const currentWord = wordQueue[currentIndex] ?? "";
+
+  const checkWord = useCallback(
+    (newSlots: (string | null)[], word: string, idx: number, queue: string[]) => {
+      const filled = newSlots.filter((s) => s !== null).length;
+      if (filled !== word.length) return;
+
+      const spelled = newSlots.join("");
+      if (spelled === word) {
+        setIsCorrect(true);
+        playCorrect();
+        speak(word);
+        const newScore = score + 1;
+        setScore(newScore);
+        setTimeout(() => {
+          if (idx + 1 >= queue.length) {
+            setGameState("complete");
+            submitGameResult({
+              gameType: "build_word",
+              score: newScore,
+              maxScore: queue.length,
+              wordsPracticed: queue,
+              wordResults: queue.map((w) => ({ word: w, correct: true })),
+            });
+          } else {
+            const nextIdx = idx + 1;
+            const nextWord = queue[nextIdx];
+            const letters = nextWord.split("");
+            setCurrentIndex(nextIdx);
+            setSlots(new Array(letters.length).fill(null));
+            setScrambledLetters(shuffle(letters));
+            setUsedIndices(new Set());
+            setIsCorrect(null);
+            setShowHint(false);
+          }
+        }, 2500);
+      } else {
+        setIsCorrect(false);
+        playIncorrect();
+        setTimeout(() => {
+          const letters = word.split("");
+          setSlots(new Array(letters.length).fill(null));
+          setScrambledLetters(shuffle(letters));
+          setUsedIndices(new Set());
+          setIsCorrect(null);
+          setShowHint(false);
+        }, 2500);
+      }
+    },
+    [],
+  );
 
   const startGame = useCallback(() => {
     const grade = dolchGrades.find((g) => g.slug === selectedGrade);
@@ -52,59 +109,23 @@ export default function BuildTheWordPage() {
     setGameState("playing");
   }, [selectedGrade]);
 
-  const currentWord = wordQueue[currentIndex] ?? "";
-
-  const handleLetterClick = useCallback(
-    (letterIdx: number) => {
+  const placeLetter = useCallback(
+    (letterIdx: number, slotIdx?: number) => {
       if (usedIndices.has(letterIdx) || isCorrect !== null) return;
 
-      const nextSlot = slots.findIndex((s) => s === null);
-      if (nextSlot === -1) return;
+      const targetSlot = slotIdx ?? slots.findIndex((s) => s === null);
+      if (targetSlot === -1 || slots[targetSlot] !== null) return;
 
       const newSlots = [...slots];
-      newSlots[nextSlot] = scrambledLetters[letterIdx];
+      newSlots[targetSlot] = scrambledLetters[letterIdx];
       setSlots(newSlots);
       setUsedIndices((prev) => new Set(prev).add(letterIdx));
-
-      // Check if word is complete
-      const filled = newSlots.filter((s) => s !== null).length + 1;
-      if (filled === currentWord.length) {
-        const spelled = newSlots.join("");
-        if (spelled === currentWord) {
-          setIsCorrect(true);
-          setScore((s) => s + 1);
-          setTimeout(() => {
-            if (currentIndex + 1 >= wordQueue.length) {
-              setGameState("complete");
-            } else {
-              const nextIdx = currentIndex + 1;
-              setCurrentIndex(nextIdx);
-              const nextWord = wordQueue[nextIdx];
-              const letters = nextWord.split("");
-              setSlots(new Array(letters.length).fill(null));
-              setScrambledLetters(shuffle(letters));
-              setUsedIndices(new Set());
-              setIsCorrect(null);
-              setShowHint(false);
-            }
-          }, 1000);
-        } else {
-          setIsCorrect(false);
-          setTimeout(() => {
-            const letters = currentWord.split("");
-            setSlots(new Array(letters.length).fill(null));
-            setScrambledLetters(shuffle(letters));
-            setUsedIndices(new Set());
-            setIsCorrect(null);
-            setShowHint(false);
-          }, 1200);
-        }
-      }
+      checkWord(newSlots, currentWord, currentIndex, wordQueue);
     },
-    [usedIndices, slots, scrambledLetters, isCorrect, currentWord, currentIndex, wordQueue]
+    [usedIndices, slots, scrambledLetters, isCorrect, currentWord, currentIndex, wordQueue, checkWord],
   );
 
-  const handleRemoveLetter = useCallback(
+  const removeLetter = useCallback(
     (slotIdx: number) => {
       if (slots[slotIdx] === null || isCorrect !== null) return;
 
@@ -113,45 +134,51 @@ export default function BuildTheWordPage() {
       newSlots[slotIdx] = null;
       setSlots(newSlots);
 
-      // Find the original index of this letter to "un-use" it
-      for (let i = 0; i < scrambledLetters.length; i++) {
-        if (scrambledLetters[i] === letter && usedIndices.has(i)) {
-          const newUsed = new Set(usedIndices);
-          newUsed.delete(i);
-          // Only remove if this is the correct one (match from right to left in slots)
-          let found = false;
-          for (let s = slotIdx; s >= 0; s--) {
-            if (slots[s] === letter && !newSlots.slice(0, s).includes(null)) {
-              found = true;
-              break;
-            }
-          }
-          if (found || newUsed.size === newSlots.filter((s) => s !== null).length) {
-            setUsedIndices(newUsed);
-            return;
-          }
-        }
-      }
-      // Fallback: just remove any matching used index
+      // Find and free the corresponding scrambled letter index
       const newUsed = new Set(usedIndices);
       for (const idx of newUsed) {
         if (scrambledLetters[idx] === letter) {
           newUsed.delete(idx);
-          setUsedIndices(newUsed);
-          return;
+          break;
         }
       }
+      setUsedIndices(newUsed);
     },
-    [slots, scrambledLetters, usedIndices, isCorrect]
+    [slots, scrambledLetters, usedIndices, isCorrect],
   );
+
+  // Drag & Drop handlers
+  const handleDragStart = (e: React.DragEvent, letterIdx: number) => {
+    if (usedIndices.has(letterIdx) || isCorrect !== null) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData("text/plain", String(letterIdx));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, slotIdx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverSlot(slotIdx);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverSlot(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, slotIdx: number) => {
+    e.preventDefault();
+    setDragOverSlot(null);
+    const letterIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+    if (isNaN(letterIdx)) return;
+    placeLetter(letterIdx, slots[slotIdx] === null ? slotIdx : undefined);
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <Link
-          href="/games"
-          className="text-sm text-gray-500 hover:text-sprout-600 transition-colors"
-        >
+        <Link href="/games" className="text-sm text-gray-500 hover:text-sprout-600 transition-colors">
           <ArrowLeft className="inline w-4 h-4 mr-1" />
           Back to Games
         </Link>
@@ -161,7 +188,7 @@ export default function BuildTheWordPage() {
         Build the Word
       </h1>
       <p className="text-lg text-gray-600 mb-8">
-        Drag letters into the correct order to spell sight words!
+        Click or drag letters into the correct order to spell sight words!
       </p>
 
       {gameState === "setup" && (
@@ -178,7 +205,7 @@ export default function BuildTheWordPage() {
                   "px-4 py-2 rounded-full text-sm font-medium transition-colors",
                   selectedGrade === g.slug
                     ? "bg-berry-500 text-white"
-                    : "bg-berry-50 text-berry-700 hover:bg-berry-100"
+                    : "bg-berry-50 text-berry-700 hover:bg-berry-100",
                 )}
               >
                 {g.name} ({g.words.filter((w) => w.text.length <= 6).length})
@@ -230,35 +257,39 @@ export default function BuildTheWordPage() {
             </div>
           )}
 
-          {/* Letter slots */}
+          {/* Letter slots (drop targets) */}
           <div className="flex items-center justify-center gap-2 sm:gap-3 mb-8">
             <AnimatePresence mode="popLayout">
               {slots.map((letter, idx) => (
-                <motion.button
+                <motion.div
                   key={`slot-${idx}`}
                   layout
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  onClick={() => handleRemoveLetter(idx)}
+                  onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, idx)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e as unknown as React.DragEvent, idx)}
+                  onClick={() => removeLetter(idx)}
                   className={cn(
-                    "w-12 h-14 sm:w-16 sm:h-18 rounded-xl text-2xl sm:text-3xl font-display font-bold transition-all border-2 flex items-center justify-center",
-                    isCorrect === true && letter !== null
-                      ? "bg-sprout-100 border-sprout-400 text-sprout-700"
-                      : isCorrect === false && letter !== null
-                        ? "bg-red-50 border-red-300 text-red-600"
-                        : letter !== null
-                          ? "bg-white border-sprout-300 text-sprout-700 shadow-md cursor-pointer hover:border-sprout-400"
-                          : "bg-gray-50 border-dashed border-gray-300 text-gray-300"
+                    "w-14 h-16 sm:w-18 sm:h-20 rounded-xl text-2xl sm:text-3xl font-display font-bold transition-all border-2 flex items-center justify-center select-none",
+                    dragOverSlot === idx && letter === null
+                      ? "border-sprout-400 bg-sprout-50 scale-105"
+                      : isCorrect === true && letter !== null
+                        ? "bg-sprout-100 border-sprout-400 text-sprout-700"
+                        : isCorrect === false && letter !== null
+                          ? "bg-red-50 border-red-300 text-red-600"
+                          : letter !== null
+                            ? "bg-white border-sprout-300 text-sprout-700 shadow-md cursor-pointer hover:border-sprout-400"
+                            : "bg-gray-50 border-dashed border-gray-300 text-gray-300",
                   )}
-                  disabled={letter === null || isCorrect !== null}
                 >
                   {letter || ""}
-                </motion.button>
+                </motion.div>
               ))}
             </AnimatePresence>
           </div>
 
-          {/* Scrambled letters */}
+          {/* Scrambled letters (drag sources) */}
           <div className="flex items-center justify-center gap-2 sm:gap-3">
             {scrambledLetters.map((letter, idx) => (
               <motion.button
@@ -268,12 +299,14 @@ export default function BuildTheWordPage() {
                   scale: usedIndices.has(idx) ? 0.8 : 1,
                   opacity: usedIndices.has(idx) ? 0.3 : 1,
                 }}
-                onClick={() => handleLetterClick(idx)}
+                onClick={() => placeLetter(idx)}
+                draggable={!usedIndices.has(idx) && isCorrect === null}
+                onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, idx)}
                 className={cn(
-                  "w-12 h-14 sm:w-16 sm:h-18 rounded-xl text-2xl sm:text-3xl font-display font-bold transition-all border-2 flex items-center justify-center",
+                  "w-14 h-16 sm:w-18 sm:h-20 rounded-xl text-2xl sm:text-3xl font-display font-bold transition-all border-2 flex items-center justify-center select-none",
                   usedIndices.has(idx)
                     ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
-                    : "bg-white border-berry-200 text-berry-700 shadow-sm hover:border-berry-400 hover:shadow-md cursor-pointer"
+                    : "bg-white border-berry-200 text-berry-700 shadow-sm hover:border-berry-400 hover:shadow-md cursor-grab active:cursor-grabbing active:scale-95",
                 )}
                 disabled={usedIndices.has(idx) || isCorrect !== null}
               >
@@ -282,24 +315,16 @@ export default function BuildTheWordPage() {
             ))}
           </div>
 
-          {/* Correct/incorrect feedback */}
+          {/* Feedback */}
           {isCorrect === true && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center mt-6"
-            >
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center mt-6">
               <span className="inline-flex items-center gap-2 bg-sprout-100 text-sprout-700 font-heading font-bold px-4 py-2 rounded-full">
                 <Check className="w-5 h-5" /> Correct!
               </span>
             </motion.div>
           )}
           {isCorrect === false && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center mt-6"
-            >
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center mt-6">
               <span className="inline-flex items-center gap-2 bg-red-100 text-red-600 font-heading font-bold px-4 py-2 rounded-full">
                 Try again! The word is: {currentWord}
               </span>

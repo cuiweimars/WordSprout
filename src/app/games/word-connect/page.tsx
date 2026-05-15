@@ -3,9 +3,11 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { dolchGrades } from "@/data/dolch-words";
-import { RotateCcw, Trophy, ArrowLeft, Circle, X } from "lucide-react";
+import { RotateCcw, Trophy, ArrowLeft, Circle, X, Star } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -24,6 +26,8 @@ const COLS = 7;
 const ROWS = 6;
 
 export default function WordConnectPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect, playIncorrect } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [board, setBoard] = useState<Board>(new Array(COLS * ROWS).fill(null));
@@ -32,28 +36,36 @@ export default function WordConnectPage() {
   const [winner, setWinner] = useState<"player" | "ai" | "draw" | null>(null);
   const [playerScore, setPlayerScore] = useState(0);
   const [aiScore, setAiScore] = useState(0);
-  const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: "correct" | "info";
+    word: string;
+  } | null>(null);
   const [isAiTurn, setIsAiTurn] = useState(false);
+  const [wordsMatched, setWordsMatched] = useState(0);
 
   const startGame = useCallback(() => {
     const grade = dolchGrades.find((g) => g.slug === selectedGrade);
     if (!grade) return;
 
     const words = shuffle(grade.words.map((w) => w.text));
-    const grid = Array.from({ length: COLS * ROWS }, (_, i) => words[i % words.length]);
+    const grid = Array.from(
+      { length: COLS * ROWS },
+      (_, i) => words[i % words.length]
+    );
 
     setBoard(new Array(COLS * ROWS).fill(null));
     setWordGrid(grid);
     setWinner(null);
     setFeedback(null);
     setIsAiTurn(false);
+    setWordsMatched(0);
     pickTargetWord(grid, new Array(COLS * ROWS).fill(null));
     setGameState("playing");
-  }, [selectedGrade]);
+    speak(grid[0]);
+  }, [selectedGrade, speak]);
 
   const pickTargetWord = useCallback(
     (grid: string[], currentBoard: Board) => {
-      // Pick from words that are in reachable cells
       const reachable: string[] = [];
       for (let c = 0; c < COLS; c++) {
         for (let r = ROWS - 1; r >= 0; r--) {
@@ -65,7 +77,9 @@ export default function WordConnectPage() {
         }
       }
       if (reachable.length > 0) {
-        setTargetWord(reachable[Math.floor(Math.random() * reachable.length)]);
+        setTargetWord(
+          reachable[Math.floor(Math.random() * reachable.length)]
+        );
       }
     },
     []
@@ -81,61 +95,54 @@ export default function WordConnectPage() {
     []
   );
 
-  const checkWin = useCallback(
-    (b: Board, player: CellValue): boolean => {
-      if (!player) return false;
-      // Horizontal
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c <= COLS - 4; c++) {
-          if (
-            b[r * COLS + c] === player &&
-            b[r * COLS + c + 1] === player &&
-            b[r * COLS + c + 2] === player &&
-            b[r * COLS + c + 3] === player
-          )
-            return true;
-        }
+  const checkWin = useCallback((b: Board, player: CellValue): boolean => {
+    if (!player) return false;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c <= COLS - 4; c++) {
+        if (
+          b[r * COLS + c] === player &&
+          b[r * COLS + c + 1] === player &&
+          b[r * COLS + c + 2] === player &&
+          b[r * COLS + c + 3] === player
+        )
+          return true;
       }
-      // Vertical
-      for (let c = 0; c < COLS; c++) {
-        for (let r = 0; r <= ROWS - 4; r++) {
-          if (
-            b[r * COLS + c] === player &&
-            b[(r + 1) * COLS + c] === player &&
-            b[(r + 2) * COLS + c] === player &&
-            b[(r + 3) * COLS + c] === player
-          )
-            return true;
-        }
-      }
-      // Diagonal /
-      for (let r = 3; r < ROWS; r++) {
-        for (let c = 0; c <= COLS - 4; c++) {
-          if (
-            b[r * COLS + c] === player &&
-            b[(r - 1) * COLS + c + 1] === player &&
-            b[(r - 2) * COLS + c + 2] === player &&
-            b[(r - 3) * COLS + c + 3] === player
-          )
-            return true;
-        }
-      }
-      // Diagonal \
+    }
+    for (let c = 0; c < COLS; c++) {
       for (let r = 0; r <= ROWS - 4; r++) {
-        for (let c = 0; c <= COLS - 4; c++) {
-          if (
-            b[r * COLS + c] === player &&
-            b[(r + 1) * COLS + c + 1] === player &&
-            b[(r + 2) * COLS + c + 2] === player &&
-            b[(r + 3) * COLS + c + 3] === player
-          )
-            return true;
-        }
+        if (
+          b[r * COLS + c] === player &&
+          b[(r + 1) * COLS + c] === player &&
+          b[(r + 2) * COLS + c] === player &&
+          b[(r + 3) * COLS + c] === player
+        )
+          return true;
       }
-      return false;
-    },
-    []
-  );
+    }
+    for (let r = 3; r < ROWS; r++) {
+      for (let c = 0; c <= COLS - 4; c++) {
+        if (
+          b[r * COLS + c] === player &&
+          b[(r - 1) * COLS + c + 1] === player &&
+          b[(r - 2) * COLS + c + 2] === player &&
+          b[(r - 3) * COLS + c + 3] === player
+        )
+          return true;
+      }
+    }
+    for (let r = 0; r <= ROWS - 4; r++) {
+      for (let c = 0; c <= COLS - 4; c++) {
+        if (
+          b[r * COLS + c] === player &&
+          b[(r + 1) * COLS + c + 1] === player &&
+          b[(r + 2) * COLS + c + 2] === player &&
+          b[(r + 3) * COLS + c + 3] === player
+        )
+          return true;
+      }
+    }
+    return false;
+  }, []);
 
   const isBoardFull = useCallback((b: Board): boolean => {
     return b.every((cell) => cell !== null);
@@ -143,7 +150,7 @@ export default function WordConnectPage() {
 
   const handleColumnClick = useCallback(
     (col: number) => {
-      if (isAiTurn || feedback || winner) return;
+      if (isAiTurn || winner) return;
 
       const row = getLowestEmptyRow(col, board);
       if (row === -1) return;
@@ -151,44 +158,68 @@ export default function WordConnectPage() {
       const idx = row * COLS + col;
       const cellWord = wordGrid[idx];
 
+      const newBoard = [...board];
+      newBoard[idx] = "player";
+      setBoard(newBoard);
+
       if (cellWord === targetWord) {
-        setFeedback("correct");
-        const newBoard = [...board];
-        newBoard[idx] = "player";
-        setBoard(newBoard);
-
-        if (checkWin(newBoard, "player")) {
-          setWinner("player");
-          setPlayerScore((s) => s + 1);
-          setTimeout(() => setGameState("complete"), 1000);
-          return;
-        }
-        if (isBoardFull(newBoard)) {
-          setWinner("draw");
-          setTimeout(() => setGameState("complete"), 1000);
-          return;
-        }
-
-        // AI turn
-        setTimeout(() => {
-          setFeedback(null);
-          setIsAiTurn(true);
-          setTimeout(() => {
-            aiMove(newBoard);
-            setIsAiTurn(false);
-          }, 600);
-        }, 400);
+        setFeedback({ type: "correct", word: cellWord });
+        setWordsMatched((s) => s + 1);
       } else {
-        setFeedback("wrong");
-        setTimeout(() => setFeedback(null), 800);
+        setFeedback({ type: "info", word: cellWord });
       }
+
+      if (checkWin(newBoard, "player")) {
+        setWinner("player");
+        setPlayerScore((s) => s + 1);
+        setTimeout(() => {
+          setGameState("complete");
+          submitGameResult({
+            gameType: "word_connect",
+            score: playerScore + 1,
+            maxScore: playerScore + 1 + aiScore,
+            wordsPracticed: [...new Set(wordGrid.filter((_, i) => newBoard[i] !== null))],
+          });
+        }, 1000);
+        return;
+      }
+      if (isBoardFull(newBoard)) {
+        setWinner("draw");
+        setTimeout(() => {
+          setGameState("complete");
+          submitGameResult({
+            gameType: "word_connect",
+            score: playerScore,
+            maxScore: playerScore + aiScore,
+            wordsPracticed: [...new Set(wordGrid)],
+          });
+        }, 1000);
+        return;
+      }
+
+      setTimeout(() => {
+        setFeedback(null);
+        setIsAiTurn(true);
+        setTimeout(() => {
+          aiMove(newBoard);
+          setIsAiTurn(false);
+        }, 600);
+      }, 600);
     },
-    [isAiTurn, feedback, winner, board, wordGrid, targetWord, getLowestEmptyRow, checkWin, isBoardFull]
+    [
+      isAiTurn,
+      winner,
+      board,
+      wordGrid,
+      targetWord,
+      getLowestEmptyRow,
+      checkWin,
+      isBoardFull,
+    ]
   );
 
   const aiMove = useCallback(
     (currentBoard: Board) => {
-      // Simple AI: try to win, then block, then random
       const availableCols: number[] = [];
       for (let c = 0; c < COLS; c++) {
         if (getLowestEmptyRow(c, currentBoard) !== -1) {
@@ -199,7 +230,6 @@ export default function WordConnectPage() {
 
       let chosenCol = -1;
 
-      // Try to win
       for (const c of availableCols) {
         const r = getLowestEmptyRow(c, currentBoard);
         const testBoard = [...currentBoard];
@@ -210,7 +240,6 @@ export default function WordConnectPage() {
         }
       }
 
-      // Try to block
       if (chosenCol === -1) {
         for (const c of availableCols) {
           const r = getLowestEmptyRow(c, currentBoard);
@@ -223,7 +252,6 @@ export default function WordConnectPage() {
         }
       }
 
-      // Prefer center columns
       if (chosenCol === -1) {
         const center = [3, 2, 4, 1, 5, 0, 6];
         for (const c of center) {
@@ -242,12 +270,28 @@ export default function WordConnectPage() {
       if (checkWin(newBoard, "ai")) {
         setWinner("ai");
         setAiScore((s) => s + 1);
-        setTimeout(() => setGameState("complete"), 1000);
+        setTimeout(() => {
+          setGameState("complete");
+          submitGameResult({
+            gameType: "word_connect",
+            score: playerScore,
+            maxScore: playerScore + aiScore + 1,
+            wordsPracticed: [...new Set(wordGrid.filter((_, i) => newBoard[i] !== null))],
+          });
+        }, 1000);
         return;
       }
       if (isBoardFull(newBoard)) {
         setWinner("draw");
-        setTimeout(() => setGameState("complete"), 1000);
+        setTimeout(() => {
+          setGameState("complete");
+          submitGameResult({
+            gameType: "word_connect",
+            score: playerScore,
+            maxScore: playerScore + aiScore,
+            wordsPracticed: [...new Set(wordGrid)],
+          });
+        }, 1000);
         return;
       }
 
@@ -279,8 +323,8 @@ export default function WordConnectPage() {
         Word Connect
       </h1>
       <p className="text-lg text-gray-600 mb-8">
-        Drop your token on the column with the target word. Get 4 in a row to
-        win!
+        Play Connect Four while learning sight words! Match the target word for
+        bonus points.
       </p>
 
       {gameState === "setup" && (
@@ -305,9 +349,9 @@ export default function WordConnectPage() {
             ))}
           </div>
           <div className="bg-sky-50 rounded-xl p-4 mb-6 text-sm text-sky-700">
-            <strong>How to play:</strong> A target word appears at the top. Find
-            the column where that word is in the lowest open slot, and click it
-            to drop your token. Get 4 tokens in a row (horizontal, vertical, or
+            <strong>How to play:</strong> Click any column to drop your token.
+            A target word appears at the top — if your token lands on it, you
+            earn a bonus point! Get 4 tokens in a row (horizontal, vertical, or
             diagonal) to win!
           </div>
           <button
@@ -343,17 +387,18 @@ export default function WordConnectPage() {
             </button>
           </div>
 
-          {/* Target word */}
+          {/* Target word bonus */}
           <div className="text-center mb-4">
             <p className="text-sm text-gray-500 mb-2">
-              Drop your token on the column with this word:
+              Bonus: land on this word for extra points!
             </p>
             <motion.div
               key={targetWord}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="inline-block bg-sky-50 border-2 border-sky-300 rounded-2xl px-6 py-3"
+              className="inline-flex items-center gap-2 bg-sky-50 border-2 border-sky-300 rounded-2xl px-6 py-3"
             >
+              <Star className="w-5 h-5 text-amber-500" />
               <span className="font-display font-bold text-3xl text-sky-600">
                 {targetWord}
               </span>
@@ -362,15 +407,29 @@ export default function WordConnectPage() {
 
           {/* Feedback */}
           <AnimatePresence>
-            {feedback === "wrong" && (
+            {feedback && (
               <motion.div
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="text-center mb-2"
               >
-                <span className="inline-flex items-center gap-1 bg-red-100 text-red-600 font-heading font-bold px-4 py-1.5 rounded-full text-sm">
-                  Wrong column! Find &ldquo;{targetWord}&rdquo;
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 font-heading font-bold px-4 py-1.5 rounded-full text-sm",
+                    feedback.type === "correct"
+                      ? "bg-green-100 text-green-600"
+                      : "bg-gray-100 text-gray-500"
+                  )}
+                >
+                  {feedback.type === "correct" ? (
+                    <>
+                      <Star className="w-4 h-4 text-amber-500" />
+                      You found &ldquo;{feedback.word}&rdquo;!
+                    </>
+                  ) : (
+                    <>That was &ldquo;{feedback.word}&rdquo;</>
+                  )}
                 </span>
               </motion.div>
             )}
@@ -388,23 +447,20 @@ export default function WordConnectPage() {
                   cell === null &&
                   row === previewRow(col);
                 const isPlayable =
-                  cell === null &&
-                  !isAiTurn &&
-                  !feedback &&
-                  !winner;
+                  cell === null && !isAiTurn && !winner;
 
                 return (
                   <button
                     key={idx}
                     onClick={() => handleColumnClick(col)}
                     className={cn(
-                      "aspect-square rounded-lg text-[10px] sm:text-xs font-display font-bold transition-all flex items-center justify-center relative",
+                      "aspect-square rounded-lg text-[15px] sm:text-[17px] font-display font-bold transition-all flex items-center justify-center relative",
                       cell === "player"
                         ? "bg-sky-400 text-white shadow-inner"
                         : cell === "ai"
                           ? "bg-berry-400 text-white shadow-inner"
                           : isTargetCell
-                            ? "bg-sky-100 text-sky-700 ring-2 ring-sky-300 hover:bg-sky-200"
+                            ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300 hover:bg-amber-200"
                             : isPlayable
                               ? "bg-sky-900/60 text-sky-300 hover:bg-sky-900/80"
                               : "bg-sky-900/40 text-sky-400/50"
@@ -415,6 +471,11 @@ export default function WordConnectPage() {
                       <Circle className="w-4 h-4 sm:w-5 sm:h-5" />
                     ) : cell === "ai" ? (
                       <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                    ) : isTargetCell ? (
+                      <span className="flex items-center justify-center gap-0.5">
+                        <Star className="w-3 h-3 text-amber-500 shrink-0" />
+                        {word}
+                      </span>
                     ) : (
                       word
                     )}
@@ -433,7 +494,7 @@ export default function WordConnectPage() {
             )}
             {!isAiTurn && !winner && (
               <span className="text-sm text-sky-600 font-medium">
-                Your turn — find the column with &ldquo;{targetWord}&rdquo;
+                Your turn — click any column to drop your token
               </span>
             )}
           </div>
@@ -476,6 +537,12 @@ export default function WordConnectPage() {
             <span className="font-bold text-berry-600">{aiScore}</span>{" "}
             Computer
           </p>
+          {wordsMatched > 0 && (
+            <p className="text-sm text-amber-600 mb-1">
+              <Star className="inline w-4 h-4" /> {wordsMatched} sight word
+              {wordsMatched !== 1 ? "s" : ""} matched!
+            </p>
+          )}
           <p className="text-sm text-gray-500 mb-6">
             {winner === "player"
               ? "Great word recognition skills!"

@@ -6,6 +6,8 @@ import { dolchGrades } from "@/data/dolch-words";
 import { RotateCcw, Trophy, ArrowLeft, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -22,6 +24,8 @@ const GRID = 4;
 const TOTAL_CELLS = GRID * GRID;
 
 export default function BingoPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [board, setBoard] = useState<string[]>([]);
@@ -46,7 +50,8 @@ export default function BingoPage() {
     setCurrentCall(callWords[0]);
     setScore(0);
     setGameState("playing");
-  }, [selectedGrade]);
+    speak(callWords[0]);
+  }, [selectedGrade, speak]);
 
   const callNextWord = useCallback(() => {
     const nextIdx = callIndex + 1;
@@ -55,13 +60,15 @@ export default function BingoPage() {
     }
     setCallIndex(nextIdx);
     setCurrentCall(callQueue[nextIdx]);
-  }, [callIndex, callQueue]);
+    speak(callQueue[nextIdx]);
+  }, [callIndex, callQueue, speak]);
 
   const handleCellClick = useCallback(
     (idx: number) => {
       if (marked.has(idx) || !currentCall) return;
 
       if (board[idx] === currentCall) {
+        playCorrect();
         const newMarked = new Set(marked);
         newMarked.add(idx);
         setMarked(newMarked);
@@ -71,6 +78,17 @@ export default function BingoPage() {
         const hasBingo = checkBingo(newMarked);
         if (hasBingo) {
           setGameState("complete");
+          const matchedWords = [...newMarked].map((i) => board[i]);
+          submitGameResult({
+            gameType: "bingo",
+            score: score + 1,
+            maxScore: TOTAL_CELLS,
+            wordsPracticed: callQueue.slice(0, callIndex + 1),
+            wordResults: callQueue.slice(0, callIndex + 1).map((w) => ({
+              word: w,
+              correct: matchedWords.includes(w),
+            })),
+          });
           return;
         }
         callNextWord();

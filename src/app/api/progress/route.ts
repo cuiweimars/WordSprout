@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { db } from "@/db";
-import { learningProgress, students, words } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { supabase } from "@/db";
 
 export const runtime = "nodejs";
 
@@ -23,33 +21,38 @@ export async function GET(request: Request) {
     );
   }
 
-  const [student] = await db
-    .select()
-    .from(students)
-    .where(and(eq(students.id, studentId), eq(students.parentId, session.user.id)))
-    .limit(1);
+  const { data: student } = await supabase
+    .from("students")
+    .select("id")
+    .eq("id", studentId)
+    .eq("parent_id", session.user.id)
+    .maybeSingle();
 
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
-  const progress = await db
-    .select({
-      wordId: learningProgress.wordId,
-      wordText: words.text,
-      status: learningProgress.status,
-      correctCount: learningProgress.correctCount,
-      incorrectCount: learningProgress.incorrectCount,
-      consecutiveCorrect: learningProgress.consecutiveCorrect,
-      nextReviewAt: learningProgress.nextReviewAt,
-      easeFactor: learningProgress.easeFactor,
-      intervalDays: learningProgress.intervalDays,
-    })
-    .from(learningProgress)
-    .innerJoin(words, eq(learningProgress.wordId, words.id))
-    .where(eq(learningProgress.studentId, studentId));
+  const { data: progress } = await supabase
+    .from("learning_progress")
+    .select("word_id, status, correct_count, incorrect_count, consecutive_correct, next_review_at, ease_factor, interval_days, words(text)")
+    .eq("student_id", studentId);
 
-  return NextResponse.json({ cards: progress });
+  const cards = (progress ?? []).map((p: Record<string, unknown>) => {
+    const word = p.words as Record<string, unknown> | null;
+    return {
+      wordId: p.word_id,
+      wordText: word?.text ?? "",
+      status: p.status,
+      correctCount: p.correct_count,
+      incorrectCount: p.incorrect_count,
+      consecutiveCorrect: p.consecutive_correct,
+      nextReviewAt: p.next_review_at,
+      easeFactor: p.ease_factor,
+      intervalDays: p.interval_days,
+    };
+  });
+
+  return NextResponse.json({ cards });
 }
 
 // POST /api/progress
@@ -70,58 +73,52 @@ export async function POST(request: Request) {
     );
   }
 
-  const [student] = await db
-    .select()
-    .from(students)
-    .where(and(eq(students.id, studentId), eq(students.parentId, session.user.id)))
-    .limit(1);
+  const { data: student } = await supabase
+    .from("students")
+    .select("id")
+    .eq("id", studentId)
+    .eq("parent_id", session.user.id)
+    .maybeSingle();
 
   if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
   for (const result of results) {
-    const existing = await db
-      .select()
-      .from(learningProgress)
-      .where(
-        and(
-          eq(learningProgress.studentId, studentId),
-          eq(learningProgress.wordId, result.wordId),
-        ),
-      )
-      .limit(1);
+    const { data: existing } = await supabase
+      .from("learning_progress")
+      .select("id, consecutive_correct, correct_count, incorrect_count, interval_days")
+      .eq("student_id", studentId)
+      .eq("word_id", result.wordId)
+      .maybeSingle();
 
-    if (existing.length > 0) {
-      const current = existing[0];
+    if (existing) {
       const isCorrect = result.quality >= 3;
-      const newConsecutive = isCorrect
-        ? current.consecutiveCorrect + 1
-        : 0;
+      const newConsecutive = isCorrect ? existing.consecutive_correct + 1 : 0;
 
-      await db
-        .update(learningProgress)
-        .set({
+      await supabase
+        .from("learning_progress")
+        .update({
           status: newConsecutive >= 3 ? "mastered" : "reviewing",
-          correctCount: current.correctCount + (isCorrect ? 1 : 0),
-          incorrectCount: current.incorrectCount + (isCorrect ? 0 : 1),
-          consecutiveCorrect: newConsecutive,
-          lastReviewedAt: new Date(),
-          nextReviewAt: new Date(Date.now() + current.intervalDays * 86400000),
-          updatedAt: new Date(),
+          correct_count: existing.correct_count + (isCorrect ? 1 : 0),
+          incorrect_count: existing.incorrect_count + (isCorrect ? 0 : 1),
+          consecutive_correct: newConsecutive,
+          last_reviewed_at: new Date().toISOString(),
+          next_review_at: new Date(Date.now() + existing.interval_days * 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
         })
-        .where(eq(learningProgress.id, current.id));
+        .eq("id", existing.id);
     } else {
       const isCorrect = result.quality >= 3;
-      await db.insert(learningProgress).values({
-        studentId,
-        wordId: result.wordId,
+      await supabase.from("learning_progress").insert({
+        student_id: studentId,
+        word_id: result.wordId,
         status: isCorrect ? "reviewing" : "learning",
-        correctCount: isCorrect ? 1 : 0,
-        incorrectCount: isCorrect ? 0 : 1,
-        consecutiveCorrect: isCorrect ? 1 : 0,
-        lastReviewedAt: new Date(),
-        nextReviewAt: new Date(Date.now() + 86400000),
+        correct_count: isCorrect ? 1 : 0,
+        incorrect_count: isCorrect ? 0 : 1,
+        consecutive_correct: isCorrect ? 1 : 0,
+        last_reviewed_at: new Date().toISOString(),
+        next_review_at: new Date(Date.now() + 86400000).toISOString(),
       });
     }
   }

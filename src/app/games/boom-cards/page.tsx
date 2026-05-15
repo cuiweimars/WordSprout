@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { dolchGrades } from "@/data/dolch-words";
 import { RotateCcw, Trophy, ArrowLeft, Bomb, Star } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -26,6 +28,8 @@ interface Card {
 }
 
 export default function BoomCardsPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect, playIncorrect, playFlip } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [deck, setDeck] = useState<Card[]>([]);
@@ -40,6 +44,8 @@ export default function BoomCardsPage() {
 
   const totalCards = 15;
   const boomCount = 3;
+
+  const wordResultsRef = useRef<{ word: string; correct: boolean }[]>([]);
 
   const startGame = useCallback(() => {
     const grade = dolchGrades.find((g) => g.slug === selectedGrade);
@@ -70,32 +76,41 @@ export default function BoomCardsPage() {
     setBestStreak(0);
     setRevealed(false);
     setFeedback(null);
+    wordResultsRef.current = [];
     setGameState("playing");
   }, [selectedGrade]);
 
   const handleReveal = useCallback(() => {
     if (revealed || feedback) return;
     setRevealed(true);
-  }, [revealed, feedback]);
+    playFlip();
+    const card = deck[currentIndex];
+    if (card && !card.isBoom) speak(card.word);
+  }, [revealed, feedback, deck, currentIndex, speak, playFlip]);
 
   const handleCorrect = useCallback(() => {
     if (!revealed || feedback) return;
     const card = deck[currentIndex];
     if (!card) return;
 
+    wordResultsRef.current.push({ word: card.word, correct: true });
     const newScore = score + 1;
     const newStreak = streak + 1;
     setScore(newScore);
     setStreak(newStreak);
     if (newStreak > bestStreak) setBestStreak(newStreak);
     setFeedback("correct");
+    playCorrect();
 
     setTimeout(() => advanceCard(), 1000);
   }, [revealed, feedback, deck, currentIndex, score, streak, bestStreak]);
 
   const handleWrong = useCallback(() => {
     if (!revealed || feedback) return;
+    const card = deck[currentIndex];
+    if (card) wordResultsRef.current.push({ word: card.word, correct: false });
     setFeedback("wrong");
+    playIncorrect();
     setStreak(0);
 
     setTimeout(() => advanceCard(), 1200);
@@ -114,6 +129,14 @@ export default function BoomCardsPage() {
     const nextIdx = currentIndex + 1;
     if (nextIdx >= deck.length) {
       setGameState("complete");
+      const words = deck.filter((c) => !c.isBoom).map((c) => c.word);
+      submitGameResult({
+        gameType: "boom_cards",
+        score,
+        maxScore: totalCards - boomCount,
+        wordsPracticed: words,
+        wordResults: wordResultsRef.current,
+      });
       return;
     }
     setCurrentIndex(nextIdx);

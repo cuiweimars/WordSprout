@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { db } from "@/db";
-import { students, learningProgress, words } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { supabase } from "@/db";
 
 // GET /api/students — list all students for the current user
 export async function GET() {
@@ -11,24 +9,46 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await db
-    .select({
-      id: students.id,
-      name: students.name,
-      gradeLevel: students.gradeLevel,
-      avatar: students.avatar,
-      isActive: students.isActive,
-      createdAt: students.createdAt,
-      masteredCount: sql<number>`count(*) filter (where ${learningProgress.status} = 'mastered')`,
-      learningCount: sql<number>`count(*) filter (where ${learningProgress.status} in ('learning', 'reviewing', 'new'))`,
-    })
-    .from(students)
-    .leftJoin(learningProgress, eq(students.id, learningProgress.studentId))
-    .where(eq(students.parentId, session.user.id))
-    .groupBy(students.id)
-    .orderBy(students.createdAt);
+  const { data, error } = await supabase
+    .from("students")
+    .select("id, name, grade_level, avatar, is_active, created_at")
+    .eq("parent_id", session.user.id)
+    .order("created_at", { ascending: true });
 
-  return NextResponse.json({ students: result });
+  if (error) {
+    console.error("Fetch students error:", error);
+    return NextResponse.json({ error: "Failed to fetch students" }, { status: 500 });
+  }
+
+  // Fetch progress counts for all students in one query.
+  const studentIds = (data ?? []).map((s) => s.id);
+  const progressMap: Record<string, { mastered: number; learning: number }> = {};
+
+  if (studentIds.length > 0) {
+    const { data: progress } = await supabase
+      .from("learning_progress")
+      .select("student_id, status")
+      .in("student_id", studentIds);
+
+    for (const p of progress ?? []) {
+      if (!progressMap[p.student_id]) progressMap[p.student_id] = { mastered: 0, learning: 0 };
+      if (p.status === "mastered") progressMap[p.student_id].mastered++;
+      else if (p.status === "learning" || p.status === "reviewing") progressMap[p.student_id].learning++;
+    }
+  }
+
+  const students = (data ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    gradeLevel: s.grade_level,
+    avatar: s.avatar,
+    isActive: s.is_active,
+    createdAt: s.created_at,
+    masteredCount: progressMap[s.id]?.mastered ?? 0,
+    learningCount: progressMap[s.id]?.learning ?? 0,
+  }));
+
+  return NextResponse.json({ students });
 }
 
 // POST /api/students — create a new student
@@ -48,30 +68,35 @@ export async function POST(req: Request) {
     );
   }
 
-  const existing = await db
-    .select({ id: students.id })
-    .from(students)
-    .where(
-      and(eq(students.parentId, session.user.id), eq(students.name, name.trim())),
-    )
-    .limit(1);
+  const { data: existing } = await supabase
+    .from("students")
+    .select("id")
+    .eq("parent_id", session.user.id)
+    .eq("name", name.trim())
+    .maybeSingle();
 
-  if (existing.length > 0) {
+  if (existing) {
     return NextResponse.json(
       { error: "A student with this name already exists." },
       { status: 409 },
     );
   }
 
-  const [student] = await db
-    .insert(students)
-    .values({
-      parentId: session.user.id,
+  const { data: student, error: insertError } = await supabase
+    .from("students")
+    .insert({
+      parent_id: session.user.id,
       name: name.trim(),
-      gradeLevel: gradeLevel || null,
+      grade_level: gradeLevel || null,
       avatar: avatar || null,
     })
-    .returning();
+    .select()
+    .single();
+
+  if (insertError) {
+    console.error("Create student error:", insertError);
+    return NextResponse.json({ error: "Failed to create student" }, { status: 500 });
+  }
 
   return NextResponse.json({ student }, { status: 201 });
 }

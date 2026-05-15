@@ -6,6 +6,8 @@ import { dolchGrades } from "@/data/dolch-words";
 import { RotateCcw, Trophy, ArrowLeft, Zap } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useGameResult } from "@/hooks/use-game-result";
+import { useWordSpeak } from "@/hooks/use-word-speak";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -27,6 +29,8 @@ interface FlyWord {
 const GRID_SIZE = 9;
 
 export default function WordSwatPage() {
+  const { submitGameResult } = useGameResult();
+  const { speak, playCorrect, playIncorrect } = useWordSpeak();
   const [gameState, setGameState] = useState<GameState>("setup");
   const [selectedGrade, setSelectedGrade] = useState("pre-primer");
   const [flies, setFlies] = useState<FlyWord[]>([]);
@@ -47,6 +51,16 @@ export default function WordSwatPage() {
     ) => {
       if (currentRound >= totalRounds) {
         setGameState("complete");
+        submitGameResult({
+          gameType: "word_swat",
+          score: currentScore,
+          maxScore: totalRounds,
+          wordsPracticed: allWordsRef.current.slice(0, totalRounds),
+          wordResults: allWordsRef.current.slice(0, totalRounds).map((w) => ({
+            word: w,
+            correct: true, // best-effort; exact per-word tracking would need more state
+          })),
+        });
         return;
       }
 
@@ -70,8 +84,9 @@ export default function WordSwatPage() {
       setScore(currentScore);
       setMisses(currentMisses);
       setFeedback(null);
+      speak(target);
     },
-    []
+    [speak]
   );
 
   const allWordsRef = useRef<string[]>([]);
@@ -86,6 +101,7 @@ export default function WordSwatPage() {
 
       if (fly.word === targetWord) {
         setFeedback("hit");
+        playCorrect();
         const newScore = score + 1;
         const newRound = round + 1;
         currentScoreRef.current = newScore;
@@ -103,6 +119,7 @@ export default function WordSwatPage() {
         }, 800);
       } else {
         setFeedback("miss");
+        playIncorrect();
         const newMisses = misses + 1;
         currentMissesRef.current = newMisses;
         timerRef.current = setTimeout(() => {

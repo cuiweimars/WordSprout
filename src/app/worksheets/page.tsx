@@ -24,16 +24,16 @@ const worksheetTypes = [
   },
   {
     title: "Word Matching",
-    description: "Match sight words to their pictures or sentences. Coming soon.",
+    description: "Match each sight word to its example sentence. Builds word recognition and reading comprehension.",
     icon: "🔗",
-    href: null,
+    href: "/worksheets/word-matching",
     color: "berry" as const,
   },
   {
     title: "Word Search",
-    description: "Find hidden sight words in a fun puzzle format. Coming soon.",
+    description: "Find hidden sight words in a fun letter grid puzzle. Great for visual word recognition.",
     icon: "🔍",
-    href: null,
+    href: "/worksheets/word-search",
     color: "sun" as const,
   },
 ];
@@ -98,20 +98,14 @@ export default function WorksheetsPage() {
         })}
       </div>
 
-      {/* Pro CTA */}
+      {/* All worksheets are currently free */}
       <div className="bg-gradient-to-r from-sprout-50 to-sky-50 rounded-2xl p-6 border border-sprout-200 text-center">
         <p className="font-heading font-bold text-sprout-700 text-lg mb-2">
-          Get Custom Worksheets
+          All Worksheets Are Free
         </p>
-        <p className="text-gray-600 text-sm mb-4">
-          Sign up for Pro to generate personalized worksheets based on your child&apos;s learning progress and weak areas.
+        <p className="text-gray-600 text-sm">
+          Generate unlimited worksheets, flashcards, and more — completely free while we&apos;re in beta.
         </p>
-        <Link
-          href="/pricing"
-          className="inline-block bg-sprout-500 text-white font-medium px-5 py-2 rounded-full hover:bg-sprout-600 transition-colors"
-        >
-          Upgrade to Pro
-        </Link>
       </div>
     </div>
   );

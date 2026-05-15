@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/db";
 import { stripe, createCheckoutSession } from "@/lib/stripe";
 
 export async function POST(req: Request) {
@@ -26,17 +24,25 @@ export async function POST(req: Request) {
     }
 
     // Look up the user
-    const [user] = await db
+    const { data: user, error: userError } = await supabase
+      .from("users")
       .select()
-      .from(users)
-      .where(eq(users.id, session.user.id))
-      .limit(1);
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (userError) {
+      console.error("Supabase user lookup error:", userError);
+      return NextResponse.json(
+        { error: "Database error" },
+        { status: 500 },
+      );
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let customerId = user.stripeCustomerId;
+    let customerId = user.stripe_customer_id;
 
     // Create a Stripe customer if one doesn't exist
     if (!customerId) {
@@ -51,10 +57,18 @@ export async function POST(req: Request) {
       customerId = customer.id;
 
       // Save the customer ID to the database
-      await db
-        .update(users)
-        .set({ stripeCustomerId: customerId })
-        .where(eq(users.id, user.id));
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", user.id);
+
+      if (updateError) {
+        console.error("Supabase update error:", updateError);
+        return NextResponse.json(
+          { error: "Failed to save customer ID" },
+          { status: 500 },
+        );
+      }
     }
 
     // Create the checkout session

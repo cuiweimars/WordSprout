@@ -33,6 +33,10 @@ export const wordListTypeEnum = pgEnum("word_list_type", [
 export const gameTypeEnum = pgEnum("game_type", [
   "word_match",
   "build_word",
+  "bingo",
+  "boom_cards",
+  "word_connect",
+  "word_swat",
 ]);
 export const printJobTypeEnum = pgEnum("print_job_type", [
   "flashcards",

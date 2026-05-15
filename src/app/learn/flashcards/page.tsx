@@ -1,23 +1,51 @@
-import { Metadata } from "next";
+"use client";
+
+import { useState } from "react";
 import { dolchGrades } from "@/data/dolch-words";
 import { fryGroups } from "@/data/fry-words";
 import { FlashcardSession } from "@/components/flashcards/flashcard-session";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = {
-  title: "Flashcard Practice",
-  description:
-    "Practice sight words with interactive flashcards. Flip, listen, and track your progress.",
-};
+interface WordListOption {
+  key: string;
+  label: string;
+  count: number;
+  words: { wordId: string; wordText: string; slug: string; exampleSentence: string }[];
+  color: "sprout" | "sky";
+}
+
+const wordLists: WordListOption[] = [
+  ...dolchGrades.map((g) => ({
+    key: `dolch-${g.slug}`,
+    label: `Dolch ${g.name}`,
+    count: g.words.length,
+    words: g.words.map((w) => ({
+      wordId: w.slug,
+      wordText: w.text,
+      slug: w.slug,
+      exampleSentence: w.exampleSentence,
+    })),
+    color: "sprout" as const,
+  })),
+  ...fryGroups.map((g) => ({
+    key: `fry-${g.slug}`,
+    label: `Fry ${g.name}`,
+    count: g.words.length,
+    words: g.words.map((w) => ({
+      wordId: w.slug,
+      wordText: w.text,
+      slug: w.slug,
+      exampleSentence: w.exampleSentence,
+    })),
+    color: "sky" as const,
+  })),
+];
 
 export default function LearnFlashcardsPage() {
-  // Default: show Dolch Pre-Primer words for unauthenticated access
-  const defaultCards = dolchGrades[0].words.map((w) => ({
-    wordId: w.slug,
-    wordText: w.text,
-    slug: w.slug,
-    exampleSentence: w.exampleSentence,
-  }));
+  const [selectedKey, setSelectedKey] = useState("dolch-pre-primer");
+
+  const selected = wordLists.find((w) => w.key === selectedKey) ?? wordLists[0];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -44,38 +72,33 @@ export default function LearnFlashcardsPage() {
           Choose a word list
         </h2>
         <div className="flex flex-wrap gap-2">
-          {dolchGrades.map((g) => (
-            <span
-              key={g.slug}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors ${
-                g.slug === "pre-primer"
-                  ? "bg-sprout-500 text-white"
-                  : "bg-sprout-50 text-sprout-700 hover:bg-sprout-100"
-              }`}
+          {wordLists.map((wl) => (
+            <button
+              key={wl.key}
+              onClick={() => setSelectedKey(wl.key)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors",
+                wl.key === selectedKey
+                  ? wl.color === "sprout"
+                    ? "bg-sprout-500 text-white"
+                    : "bg-sky-500 text-white"
+                  : wl.color === "sprout"
+                    ? "bg-sprout-50 text-sprout-700 hover:bg-sprout-100"
+                    : "bg-sky-50 text-sky-700 hover:bg-sky-100",
+              )}
             >
-              {g.name} ({g.words.length})
-            </span>
-          ))}
-          {fryGroups.map((g) => (
-            <span
-              key={g.slug}
-              className="px-3 py-1.5 rounded-full text-sm font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 cursor-pointer transition-colors"
-            >
-              Fry {g.name} ({g.words.length})
-            </span>
+              {wl.label} ({wl.count})
+            </button>
           ))}
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          Sign in to save your progress and unlock all word lists
-        </p>
       </div>
 
       {/* Session */}
       <div className="bg-white rounded-2xl border p-6 sm:p-8">
         <div className="mb-4 text-sm text-gray-500">
-          Dolch Pre-Primer &middot; {defaultCards.length} words
+          {selected.label} &middot; {selected.words.length} words
         </div>
-        <FlashcardSession cards={defaultCards} type="new" />
+        <FlashcardSession key={selectedKey} cards={selected.words} type="new" />
       </div>
     </div>
   );

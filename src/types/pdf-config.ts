@@ -7,4 +7,4 @@ export interface PdfConfig {
   shuffle: boolean;
 }
 
-export type WorksheetType = "tracing" | "fill-blank";
+export type WorksheetType = "tracing" | "fill-blank" | "word-matching" | "word-search";

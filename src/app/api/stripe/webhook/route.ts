@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/db";
 import { stripe, priceToTier } from "@/lib/stripe";
 import type Stripe from "stripe";
 
@@ -55,17 +53,21 @@ export async function POST(req: Request) {
           break;
         }
 
-        await db
-          .update(users)
-          .set({
-            subscriptionTier: tier,
-            stripeSubscriptionId: subscription.id,
-            stripePriceId: priceId ?? null,
-            stripeCurrentPeriodEnd: new Date(
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            subscription_tier: tier,
+            stripe_subscription_id: subscription.id,
+            stripe_price_id: priceId ?? null,
+            stripe_current_period_end: new Date(
               subscriptionItem.current_period_end * 1000,
-            ),
+            ).toISOString(),
           })
-          .where(eq(users.id, userId));
+          .eq("id", userId);
+
+        if (updateError) {
+          console.error("Supabase update error (checkout completed):", updateError);
+        }
 
         break;
       }
@@ -84,27 +86,36 @@ export async function POST(req: Request) {
         }
 
         // Look up user by Stripe customer ID
-        const [user] = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.stripeCustomerId, customerId))
-          .limit(1);
+        const { data: user, error: userError } = await supabase
+          .from("users")
+          .select("id")
+          .eq("stripe_customer_id", customerId)
+          .maybeSingle();
+
+        if (userError) {
+          console.error("Supabase user lookup error:", userError);
+          break;
+        }
 
         if (!user) {
           console.error("No user found for customer:", customerId);
           break;
         }
 
-        await db
-          .update(users)
-          .set({
-            subscriptionTier: tier,
-            stripePriceId: priceId ?? null,
-            stripeCurrentPeriodEnd: new Date(
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            subscription_tier: tier,
+            stripe_price_id: priceId ?? null,
+            stripe_current_period_end: new Date(
               subscriptionItem.current_period_end * 1000,
-            ),
+            ).toISOString(),
           })
-          .where(eq(users.id, user.id));
+          .eq("id", user.id);
+
+        if (updateError) {
+          console.error("Supabase update error (subscription updated):", updateError);
+        }
 
         break;
       }
@@ -113,26 +124,35 @@ export async function POST(req: Request) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        const [user] = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.stripeCustomerId, customerId))
-          .limit(1);
+        const { data: user, error: userError } = await supabase
+          .from("users")
+          .select("id")
+          .eq("stripe_customer_id", customerId)
+          .maybeSingle();
+
+        if (userError) {
+          console.error("Supabase user lookup error:", userError);
+          break;
+        }
 
         if (!user) {
           console.error("No user found for customer:", customerId);
           break;
         }
 
-        await db
-          .update(users)
-          .set({
-            subscriptionTier: "free",
-            stripeSubscriptionId: null,
-            stripePriceId: null,
-            stripeCurrentPeriodEnd: null,
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            subscription_tier: "free",
+            stripe_subscription_id: null,
+            stripe_price_id: null,
+            stripe_current_period_end: null,
           })
-          .where(eq(users.id, user.id));
+          .eq("id", user.id);
+
+        if (updateError) {
+          console.error("Supabase update error (subscription deleted):", updateError);
+        }
 
         break;
       }

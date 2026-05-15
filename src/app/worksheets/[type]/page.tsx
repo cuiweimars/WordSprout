@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { TracingWorksheetPage } from "@/components/pdf/tracing-worksheet-page";
 import { FillBlankWorksheetPage } from "@/components/pdf/fill-blank-worksheet-page";
+import { WordMatchingWorksheetPage } from "@/components/pdf/word-matching-worksheet-page";
+import { WordSearchWorksheetPage } from "@/components/pdf/word-search-worksheet-page";
 
-const validTypes = ["tracing", "fill-blank"] as const;
+const validTypes = ["tracing", "fill-blank", "word-matching", "word-search"] as const;
 
 export function generateStaticParams() {
   return validTypes.map((type) => ({ type }));
@@ -21,6 +23,8 @@ export async function generateMetadata({
   const titles: Record<string, string> = {
     tracing: "Sight Word Tracing Worksheets — Free Printable",
     "fill-blank": "Fill-in-the-Blank Sight Word Worksheets — Free Printable",
+    "word-matching": "Word Matching Sight Word Worksheets — Free Printable",
+    "word-search": "Sight Word Word Search Puzzles — Free Printable",
   };
   return {
     title: titles[type] || "Sight Word Worksheets",
@@ -39,10 +43,14 @@ export default async function WorksheetTypePage({
   const titles: Record<string, string> = {
     tracing: "Tracing Worksheets",
     "fill-blank": "Fill-in-the-Blank Worksheets",
+    "word-matching": "Word Matching Worksheets",
+    "word-search": "Word Search Puzzles",
   };
   const descriptions: Record<string, string> = {
     tracing: "Practice writing sight words with guided tracing lines.",
     "fill-blank": "Complete sentences by filling in the missing sight word.",
+    "word-matching": "Match each sight word to its example sentence.",
+    "word-search": "Find hidden sight words in a fun letter grid puzzle.",
   };
 
   return (
@@ -66,6 +74,8 @@ export default async function WorksheetTypePage({
 
       {type === "tracing" && <TracingWorksheetPage />}
       {type === "fill-blank" && <FillBlankWorksheetPage />}
+      {type === "word-matching" && <WordMatchingWorksheetPage />}
+      {type === "word-search" && <WordSearchWorksheetPage />}
     </div>
   );
 }
