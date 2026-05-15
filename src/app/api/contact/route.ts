@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/db";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -13,11 +15,29 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!EMAIL_REGEX.test(email)) {
+      return NextResponse.json(
+        { error: "Please provide a valid email address." },
+        { status: 400 },
+      );
+    }
+
+    const trimmedName = String(name).trim().slice(0, 100);
+    const trimmedSubject = String(subject).trim().slice(0, 200);
+    const trimmedMessage = String(message).trim().slice(0, 5000);
+
+    if (!trimmedName || !trimmedSubject || !trimmedMessage) {
+      return NextResponse.json(
+        { error: "Fields must not be empty after trimming." },
+        { status: 400 },
+      );
+    }
+
     const { error } = await supabase.from("contact_submissions").insert({
-      name,
-      email,
-      subject,
-      message,
+      name: trimmedName,
+      email: email.trim().toLowerCase(),
+      subject: trimmedSubject,
+      message: trimmedMessage,
     });
 
     if (error) {

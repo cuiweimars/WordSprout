@@ -64,10 +64,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.sub!;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).role = token.role;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).subscriptionTier = token.subscriptionTier;
+        session.user.role = token.role as string | undefined;
+        session.user.subscriptionTier = token.subscriptionTier as string | undefined;
       }
       return session;
     },

@@ -1,5 +1,12 @@
 import Link from "next/link";
 import { siteConfig } from "@/data/site-config";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Free Sight Word Games, Flashcards & Worksheets for Kids",
+  description:
+    "Help your child master sight words with interactive flashcards, fun games, and printable worksheets. 100% free for PreK-3rd grade. Dolch & Fry word lists included.",
+};
 
 export default function HomePage() {
   return (

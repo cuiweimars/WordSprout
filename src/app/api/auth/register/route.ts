@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/db";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function POST(req: Request) {
   try {
     const { name, email, password } = await req.json();
@@ -13,9 +15,30 @@ export async function POST(req: Request) {
       );
     }
 
+    if (typeof name !== "string" || name.trim().length > 100) {
+      return NextResponse.json(
+        { error: "Name must be between 1 and 100 characters." },
+        { status: 400 },
+      );
+    }
+
+    if (!EMAIL_REGEX.test(email)) {
+      return NextResponse.json(
+        { error: "Please provide a valid email address." },
+        { status: 400 },
+      );
+    }
+
     if (password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters." },
+        { status: 400 },
+      );
+    }
+
+    if (password.length > 128) {
+      return NextResponse.json(
+        { error: "Password must be at most 128 characters." },
         { status: 400 },
       );
     }

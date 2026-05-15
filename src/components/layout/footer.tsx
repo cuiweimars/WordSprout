@@ -19,8 +19,8 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-sprout-200">
               <li><Link href="/sight-words/dolch" className="hover:text-white transition-colors">Dolch Words</Link></li>
               <li><Link href="/sight-words/fry" className="hover:text-white transition-colors">Fry Words</Link></li>
-              <li><Link href="/sight-words/kindergarten" className="hover:text-white transition-colors">Kindergarten</Link></li>
-              <li><Link href="/sight-words/first-grade" className="hover:text-white transition-colors">1st Grade</Link></li>
+              <li><Link href="/sight-words/dolch/primer" className="hover:text-white transition-colors">Kindergarten</Link></li>
+              <li><Link href="/sight-words/dolch/first-grade" className="hover:text-white transition-colors">1st Grade</Link></li>
             </ul>
           </div>
           <div>

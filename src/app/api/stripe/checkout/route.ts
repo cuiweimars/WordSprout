@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { supabase } from "@/db";
-import { stripe, createCheckoutSession } from "@/lib/stripe";
+import { getStripe, createCheckoutSession, isValidPriceId } from "@/lib/stripe";
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +21,10 @@ export async function POST(req: Request) {
 
     if (tier !== "pro" && tier !== "teacher") {
       return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
+    }
+
+    if (!isValidPriceId(priceId)) {
+      return NextResponse.json({ error: "Invalid price ID" }, { status: 400 });
     }
 
     // Look up the user
@@ -46,7 +50,7 @@ export async function POST(req: Request) {
 
     // Create a Stripe customer if one doesn't exist
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customer = await getStripe().customers.create({
         email: user.email,
         name: user.name ?? undefined,
         metadata: {

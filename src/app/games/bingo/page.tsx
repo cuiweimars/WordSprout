@@ -72,19 +72,21 @@ export default function BingoPage() {
         const newMarked = new Set(marked);
         newMarked.add(idx);
         setMarked(newMarked);
-        setScore((s) => s + 1);
+        const newScore = score + 1;
+        setScore(newScore);
 
         // Check bingo (row, col, diagonal)
         const hasBingo = checkBingo(newMarked);
         if (hasBingo) {
           setGameState("complete");
           const matchedWords = [...newMarked].map((i) => board[i]);
+          const currentCallIndex = callIndex;
           submitGameResult({
             gameType: "bingo",
-            score: score + 1,
+            score: newScore,
             maxScore: TOTAL_CELLS,
-            wordsPracticed: callQueue.slice(0, callIndex + 1),
-            wordResults: callQueue.slice(0, callIndex + 1).map((w) => ({
+            wordsPracticed: callQueue.slice(0, currentCallIndex + 1),
+            wordResults: callQueue.slice(0, currentCallIndex + 1).map((w) => ({
               word: w,
               correct: matchedWords.includes(w),
             })),
@@ -94,7 +96,7 @@ export default function BingoPage() {
         callNextWord();
       }
     },
-    [marked, currentCall, board, callNextWord]
+    [marked, currentCall, board, score, callIndex, callQueue, callNextWord, playCorrect, submitGameResult]
   );
 
   function checkBingo(m: Set<number>): boolean {
